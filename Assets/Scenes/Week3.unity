@@ -450,7 +450,7 @@ MonoBehaviour:
   waypointReachDist: 0.5
   waitTimeAtWaypoint: 1.5
   rotationSpeed: 8
-  randomPatrol: 0
+  randomPatrol: 1
   speedParameter: Speed
   animationDampTime: 0.1
 --- !u!1 &784786507
