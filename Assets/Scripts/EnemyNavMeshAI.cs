@@ -39,6 +39,8 @@ public class EnemyNavMeshAI : MonoBehaviour
     [Header("Animation")]
     [SerializeField] private string speedParameter = "Speed";
     [SerializeField] private float animationDampTime = 0.1f; //Makes the animation not look so sudden
+    [SerializeField] private string attackTrigger = "Attack";
+    [SerializeField] private float attackCooldown = 1.5f;
 
     private NavMeshAgent agent;
     private Animator animator;
@@ -48,7 +50,8 @@ public class EnemyNavMeshAI : MonoBehaviour
     private float waitTimer;
     private float loseSightTimer;
     private float repathTimer;
-
+    private bool isAttacking;
+    private float attackTimer;
     private bool HasPatrolPoints
     {
         get
@@ -63,7 +66,7 @@ public class EnemyNavMeshAI : MonoBehaviour
         animator = GetComponent<Animator>();
         player = GameObject.FindGameObjectWithTag("Player").transform;
 
-        agent.updateRotation = false;
+        agent.updateRotation = false;   
     }
 
     void Start()
@@ -266,6 +269,24 @@ public class EnemyNavMeshAI : MonoBehaviour
             return;
         }
 
+        if (isAttacking)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+            agent.ResetPath();
+
+            attackTimer += Time.deltaTime;
+
+            if (attackTimer >= attackCooldown)
+            {
+                attackTimer = 0f;
+                isAttacking = false;
+                agent.isStopped = false;
+                agent.SetDestination(player.position);
+            }
+            return;
+        }
+
         //Chases player when in range, but stops when it reaches the stopping distance.
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
         if (distanceToPlayer <= chaseStoppingDis)
@@ -273,9 +294,17 @@ public class EnemyNavMeshAI : MonoBehaviour
             //ATTACK STATE ADD HERE
             agent.isStopped = true;
             agent.ResetPath();
+
+            if (!isAttacking)
+            {
+                isAttacking = true;
+                attackTimer = 0f;
+                animator.SetTrigger(attackTrigger);
+            }
         }
         else
         {
+            isAttacking = false;
             agent.isStopped = false;
             agent.SetDestination(player.position);
         }
@@ -284,6 +313,8 @@ public class EnemyNavMeshAI : MonoBehaviour
 
     private void HandleRotation()
     {
+        if (isAttacking) return;
+
         Vector3 moveDirection = agent.velocity.normalized;
         moveDirection.y = 0f;
 
@@ -385,8 +416,13 @@ public class EnemyNavMeshAI : MonoBehaviour
 
     private void UpdateAnimation()
     {
+        if (isAttacking)
+        {
+            animator.SetFloat(speedParameter, 0f);
+            return;
+        }
         float animSpeed = 0f;
-        bool isMoving = agent.velocity.magnitude > 0.05f && !agent.isStopped;
+        bool isMoving = agent.desiredVelocity.magnitude > 0.05f && !agent.isStopped;
 
         if (currentState == EnemyStates.Patrol && isMoving)
         {
