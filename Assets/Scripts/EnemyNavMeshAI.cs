@@ -4,7 +4,7 @@ public class EnemyNavMeshAI : MonoBehaviour
 {
     private enum EnemyStates
     {
-        Standby,
+        Idle,
         Patrol,
         Chase
     }
@@ -17,6 +17,12 @@ public class EnemyNavMeshAI : MonoBehaviour
     [SerializeField] private float chaseRange = 10f;
     [SerializeField] private float loseRange = 16f;
 
+    [Header("Vision")]
+    [SerializeField] private Transform eyePoint;
+    [SerializeField] private LayerMask obstacleMask;
+    [SerializeField] private float fieldOfView = 90f;
+    [SerializeField] private float loseSightTime = 3f;
+
     [Header("Movement")]
     [SerializeField] private float walkSpeed = 2f;
     [SerializeField] private float runSpeed = 4f;
@@ -26,6 +32,9 @@ public class EnemyNavMeshAI : MonoBehaviour
     [SerializeField] private float waitTimeAtWaypoint = 1.5f; //How long the enemy waits at each points
     [SerializeField] private float rotationSpeed = 8f;
     [SerializeField] private bool randomPatrol = false;
+
+    [Header("Path Recovery")]
+    [SerializeField] private float repathDelay = 1f;
 
     [Header("Animation")]
     [SerializeField] private string speedParameter = "Speed";
@@ -37,6 +46,8 @@ public class EnemyNavMeshAI : MonoBehaviour
     private bool stateInitialized;
     private int patrolIndex;
     private float waitTimer;
+    private float loseSightTimer;
+    private float repathTimer;
 
     private bool HasPatrolPoints
     {
@@ -51,6 +62,8 @@ public class EnemyNavMeshAI : MonoBehaviour
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
         player = GameObject.FindGameObjectWithTag("Player").transform;
+
+        agent.updateRotation = false;
     }
 
     void Start()
@@ -61,7 +74,7 @@ public class EnemyNavMeshAI : MonoBehaviour
         }
         else
         {
-            ChangeState(EnemyStates.Standby);
+            ChangeState(EnemyStates.Idle);
         }
     }
 
@@ -71,7 +84,7 @@ public class EnemyNavMeshAI : MonoBehaviour
         
         switch (currentState)
         {
-            case EnemyStates.Standby:
+            case EnemyStates.Idle:
                 UpdateIdle();
                 break;
             case EnemyStates.Patrol:
@@ -81,25 +94,67 @@ public class EnemyNavMeshAI : MonoBehaviour
                 UpdateChase();
                 break;
         }
+
+        HandlePathFailure();
+        HandleRotation();
         UpdateAnimation();
     }
 
     private void CheckForPlayer()
     {
         if (player == null) return;
+        
+        Vector3 directionToPlayer = (player.position - eyePoint.position).normalized;
         //CMeasure the distance between the player and enemy.
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
         //if the enemy is not chasing AND the player is near
-        if (currentState != EnemyStates.Chase && distanceToPlayer <= chaseRange)
+
+        if (distanceToPlayer > loseRange)
         {
-            ChangeState(EnemyStates.Chase);
-        }
-        //if the enemy is chasing, but the player is out of range
-        else if (currentState == EnemyStates.Chase && distanceToPlayer >= loseRange)
-        {
-            ChangeState(EnemyStates.Patrol);
+            loseSightTimer += Time.deltaTime;
+
+            if (loseSightTimer >= loseSightTime)
+            {
+                if (HasPatrolPoints)
+                {
+                    ChangeState(EnemyStates.Patrol);
+                }
+                else
+                {
+                    ChangeState(EnemyStates.Idle);
+                }
+            }
+
+            return;
         }
 
+        float angle = Vector3.Angle(transform.forward, directionToPlayer);
+
+        if (angle > fieldOfView * 0.5f)
+        {
+            loseSightTimer += Time.deltaTime;
+            return;
+        }
+
+        bool hasLineOfSight = 
+            Physics.Raycast(eyePoint.position, directionToPlayer, out RaycastHit hit, chaseRange, obstacleMask,QueryTriggerInteraction.Ignore);
+
+        if (hasLineOfSight)
+        {
+            if (hit.transform.CompareTag("Player"))
+            {
+                loseSightTimer = 0f;
+
+                if (currentState != EnemyStates.Chase)
+                {
+                    ChangeState(EnemyStates.Chase);
+                }
+            }
+            else
+            {
+                loseSightTimer += Time.deltaTime;
+            }
+        }
     }
     //This method changes the enemy state
     private void ChangeState(EnemyStates newState)
@@ -114,7 +169,7 @@ public class EnemyNavMeshAI : MonoBehaviour
 
         switch (currentState)
         {
-            case EnemyStates.Standby:
+            case EnemyStates.Idle:
                 EnterIdle();
                 break;
             case EnemyStates.Patrol:
@@ -161,7 +216,7 @@ public class EnemyNavMeshAI : MonoBehaviour
         //if the patrol points were removed, change to idle state.
         if (!HasPatrolPoints)
         {
-            ChangeState(EnemyStates.Standby);
+            ChangeState(EnemyStates.Idle);
             return;
         }
         //Keep moving till the AI reached it
@@ -206,7 +261,7 @@ public class EnemyNavMeshAI : MonoBehaviour
             }
             else
             {
-                ChangeState(EnemyStates.Standby);
+                ChangeState(EnemyStates.Idle);
             }
             return;
         }
@@ -225,6 +280,16 @@ public class EnemyNavMeshAI : MonoBehaviour
             agent.SetDestination(player.position);
         }
 
+    }
+
+    private void HandleRotation()
+    {
+        Vector3 moveDirection = agent.velocity.normalized;
+        moveDirection.y = 0f;
+
+        Quaternion targetRot = Quaternion.LookRotation(moveDirection);
+
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
     }
 
     private bool ReachDestination()
@@ -290,6 +355,34 @@ public class EnemyNavMeshAI : MonoBehaviour
 
     }
 
+    private void HandlePathFailure()
+    {
+        if (agent.pathPending) return;
+
+        if (agent.pathStatus == NavMeshPathStatus.PathInvalid || agent.pathStatus == NavMeshPathStatus.PathPartial)
+        {
+            repathTimer += Time.deltaTime;
+
+            if (repathTimer >= repathDelay)
+            {
+                repathTimer = 0f;
+
+                if (currentState == EnemyStates.Chase && player != null)
+                {
+                    agent.SetDestination(player.position);
+                }
+                else if (currentState == EnemyStates.Patrol)
+                {
+                    SetCurrentPatrolDestination();
+                }
+            }
+        }
+        else
+        {
+            repathTimer = 0f;
+        }
+    }
+
     private void UpdateAnimation()
     {
         float animSpeed = 0f;
@@ -314,5 +407,13 @@ public class EnemyNavMeshAI : MonoBehaviour
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, loseRange);
+
+        Gizmos.color = Color.blue;
+
+        Vector3 leftBoundary = Quaternion.Euler(0, -fieldOfView * 0.5f, 0) * transform.forward;
+        Vector3 rightBoundary = Quaternion.Euler(0, fieldOfView * 0.5f, 0) * transform.forward;
+
+        Gizmos.DrawRay(transform.position, leftBoundary * chaseRange);
+        Gizmos.DrawRay(transform.position, rightBoundary * chaseRange);
     }
 }
