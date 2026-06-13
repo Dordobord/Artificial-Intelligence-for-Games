@@ -13,10 +13,10 @@ TagManager:
   - UI
   - Environment
   - Player
-  - 
-  - 
-  - 
-  - 
+  - Unit
+  - Enemy
+  - Ground
+  - Leader
   - 
   - 
   - 

@@ -19,6 +19,12 @@ namespace Unity.AI.Navigation.Samples
 
         void Update()
         {
+            if(!m_Agent.enabled)
+                return;
+
+            if(!m_Agent.isOnNavMesh)
+                return;
+                
             if (Input.GetMouseButtonDown(0) && !Input.GetKey(KeyCode.LeftShift))
             {
                 var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
