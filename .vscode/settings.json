@@ -67,5 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "AI.slnx"
+    "dotnet.defaultSolution": "Artificial-Intelligence-for-Games.slnx"
 }

@@ -7,13 +7,8 @@ public class CarAI : MonoBehaviour
     private NavMeshAgent carAgent;
 
     [Header("Route")]
-    public Transform[] startRoute;
     public int currentWaypointIndex = 0;
     public Transform[] currentRoute;
-    public Transform[] route_1;
-    public Transform[] route_2;
-    public Transform[] route_3;
-    public bool routeChosen = false;    
 
     [Header("Traffic Light")]
     public StopLight trafficLight;
@@ -31,18 +26,22 @@ public class CarAI : MonoBehaviour
     public LayerMask carLayer;
     public bool carInFront = false;
 
-    private void Start()
+    void Awake()
     {
         carAgent = GetComponent<NavMeshAgent>();
         carAgent.speed = normalSpeed;
-
-        currentRoute = startRoute;
+    }
+    private void Start()
+    {
         currentWaypointIndex = 0;
-        MoveToCurrentWaypoint();
     }
 
     private void Update()
     {
+        // Don't move if route hasn't been assigned yet
+        if (currentRoute == null || currentRoute.Length == 0)
+            return;
+
         CheckCarInFront();
 
         if (carInFront)
@@ -82,9 +81,10 @@ public class CarAI : MonoBehaviour
         }
     }
 
-    private void MoveToCurrentWaypoint()
+    public void MoveToCurrentWaypoint()
     {
-        if (currentRoute.Length == 0 || currentRoute == null)  return;
+        if (currentRoute == null || currentRoute.Length == 0)
+            return;
 
         carAgent.SetDestination(currentRoute[currentWaypointIndex].position);
     }
@@ -95,38 +95,10 @@ public class CarAI : MonoBehaviour
 
         if (currentWaypointIndex >= currentRoute.Length)
         {
-            if (!routeChosen)
-            {
-                ChooseRandomRoute();
-            }
-            else
-            {
-                currentWaypointIndex = 0;
-                MoveToCurrentWaypoint();
-            }
+            Destroy(gameObject);
+            return;
         }
 
-        MoveToCurrentWaypoint();
-    }
-
-    public void ChooseRandomRoute()
-    {
-        routeChosen = true;
-        int randomRoute = Random.Range(0, 2);
-        if (randomRoute == 0)
-        {
-            currentRoute = route_1;
-        }
-        else if (randomRoute == 1)
-        {
-            currentRoute = route_2;
-        }
-        else
-        {
-            currentRoute = route_3;
-        }
-
-        currentWaypointIndex = 0;
         MoveToCurrentWaypoint();
     }
 
@@ -134,7 +106,8 @@ public class CarAI : MonoBehaviour
     {
         carInFront = false;
 
-        if (rayOrigin == null) return;
+        if (rayOrigin == null)
+            return;
 
         Vector3 origin = rayOrigin.position;
         Vector3 direction = transform.forward;
